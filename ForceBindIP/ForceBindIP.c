@@ -1,8 +1,17 @@
-// ReSharper disable CppClangTidyClangDiagnosticCastFunctionTypeStrict
+/* ReSharper disable CppClangTidyClangDiagnosticCastFunctionTypeStrict */
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include <iphlpapi.h>
 #include <tchar.h>
+
+/* Unreferenced formal parameter */
+#pragma warning(disable: 4100)
+/* Unsafe conversion between function types */
+#pragma warning(disable: 4191)
+/* Function selected for automatic inline expansion */
+#pragma warning(disable: 4711)
+/* Compiler will insert Spectre mitigation */
+#pragma warning(disable: 5045)
 
 #define countof(a) (sizeof(a) / sizeof((a)[0]))
 
@@ -12,31 +21,38 @@
 static void MessageBox_ShowError(LPTSTR text) {
     TCHAR buf[256];
     DWORD rv = GetLastError();
-    LPTSTR messageBuffer = NULL;
-    FormatMessage(FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS, NULL, rv,
-                  MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT), (LPTSTR)&messageBuffer, 0, NULL);
-    wsprintf(buf, _T("%s\r\n\r\nError %u - %s"), text, rv, messageBuffer);
+    int printed = wsprintf(buf, _T("%s\r\n\r\nWindows Error %u - "), text, rv);
+    TCHAR *ptr = buf + printed;
+    FormatMessage(
+        FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
+        NULL,
+        rv,
+        MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
+        ptr,
+        countof(buf) - printed,
+        NULL
+    );
     MessageBox(NULL, buf, _T("ForceBindIP"), MB_ICONERROR);
-    LocalFree(messageBuffer);
 }
 
+/* Hide some complexity. */
 #define MessageBox_ShowError(text) MessageBox_ShowError(_T(text))
 
-typedef _Success_(return != FALSE)
-    BOOL(WINAPI *funcDecl_WriteProcessMemory)(_In_ HANDLE hProcess, _In_ LPVOID lpBaseAddress,
-                                              _In_reads_bytes_(nSize) LPCVOID lpBuffer, _In_ SIZE_T nSize,
-                                              _Out_opt_ SIZE_T *lpNumberOfBytesWritten);
+typedef _Success_(return != FALSE) BOOL(WINAPI *funcDecl_WriteProcessMemory)(
+    _In_ HANDLE hProcess, _In_ LPVOID lpBaseAddress, _In_reads_bytes_(nSize) LPCVOID lpBuffer, _In_ SIZE_T nSize,
+    _Out_opt_ SIZE_T *lpNumberOfBytesWritten
+);
 
-typedef _Ret_maybenull_
-HANDLE(WINAPI *funcDecl_CreateRemoteThread)(_In_ HANDLE hProcess, _In_opt_ LPSECURITY_ATTRIBUTES lpThreadAttributes,
-                                            _In_ SIZE_T dwStackSize, _In_ LPTHREAD_START_ROUTINE lpStartAddress,
-                                            _In_opt_ LPVOID lpParameter, _In_ DWORD dwCreationFlags,
-                                            _Out_opt_ LPDWORD lpThreadId);
+typedef _Ret_maybenull_ HANDLE(WINAPI *funcDecl_CreateRemoteThread)(
+    _In_ HANDLE hProcess, _In_opt_ LPSECURITY_ATTRIBUTES lpThreadAttributes, _In_ SIZE_T dwStackSize,
+    _In_ LPTHREAD_START_ROUTINE lpStartAddress, _In_opt_ LPVOID lpParameter, _In_ DWORD dwCreationFlags,
+    _Out_opt_ LPDWORD lpThreadId
+);
 
 typedef _Ret_maybenull_ HMODULE(WINAPI *funcDecl_LoadLibrary)(_In_ LPCSTR lpLibFileName);
 
-static CHAR funcName_CreateRemoteThread[] = "Zk|xm|K|tvm|Mqk|x}";
-static CHAR funcName_WriteProcessMemory[] = "Nkpm|Ikvz|jjT|tvk`";
+static const CHAR funcName_CreateRemoteThread[] = "Zk|xm|K|tvm|Mqk|x}";
+static const CHAR funcName_WriteProcessMemory[] = "Nkpm|Ikvz|jjT|tvk`";
 
 #if !defined(UNICODE)
 static const CHAR funcName_LoadLibrary[] = "LoadLibraryA";
@@ -44,7 +60,9 @@ static const CHAR funcName_LoadLibrary[] = "LoadLibraryA";
 static const CHAR funcName_LoadLibrary[] = "LoadLibraryW";
 #endif
 
-#pragma function(memset)
+#if defined(NDEBUG)
+    #pragma function(memset)
+
 void *__cdecl memset(void *ptr, int c, size_t len) {
     BYTE *p = ptr;
     for (SIZE_T i = 0; i < len; ++i) {
@@ -52,6 +70,7 @@ void *__cdecl memset(void *ptr, int c, size_t len) {
     }
     return ptr;
 }
+#endif
 
 PTCHAR lstrrchr(PTCHAR str, TCHAR c) {
     for (PTCHAR p = str + lstrlen(str); p >= str; --p) {
@@ -62,22 +81,30 @@ PTCHAR lstrrchr(PTCHAR str, TCHAR c) {
     return NULL;
 }
 
-static void DecryptFunctionName(BYTE *data) {
+static void DecryptFunctionName(BYTE *data, BYTE *out) {
     while (*data != '\0') {
-        *data++ ^= 0x19U;
+        *out++ = *data++ ^ 0x19U;
     }
+    *out = '\0';
 }
+
+#define ResolveFunctionOnStack(hModule, funcName, funcType, funcAddr)                                                          \
+    do {                                                                                                                       \
+        CHAR funcNameDecrypted[sizeof(funcName)];                                                                              \
+        DecryptFunctionName((BYTE *)(funcName), (BYTE *)funcNameDecrypted);                                                    \
+        (funcAddr) = (funcType)GetProcAddress(hModule, funcNameDecrypted);                                                     \
+        RtlZeroMemory(funcNameDecrypted, sizeof(funcNameDecrypted));                                                           \
+    } while (0)
 
 static int usage(void) { return MessageBox_Show2("Usage", "ForceBindIP usage"); }
 
-#pragma warning(disable : 4028)
-int WINAPI
 #if !defined(UNICODE)
-WinMain
+    #define WinMain WinMain
 #else
-wWinMain
+    #define WinMain wWinMain
 #endif
-    (HINSTANCE hInstance, HINSTANCE hPrevInstance, TCHAR *lpCmdLine, int nShowCmd) {
+
+int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, TCHAR *lpCmdLine, int nShowCmd) {
     HMODULE module_kernel32;
     funcDecl_WriteProcessMemory func_WriteProcessMemory;
     funcDecl_CreateRemoteThread func_CreateRemoteThread;
@@ -88,13 +115,11 @@ wWinMain
     HANDLE remoteThread;
     DWORD creationFlags = 0;
     TCHAR dllName[MAX_PATH];
-    IP_ADAPTER_INFO AdapterInfo[32];
+    IP_ADAPTER_INFO AdapterInfo[16];
     TCHAR ipAddrToBind[countof(_T("{92418c82-090a-433f-94ba-a0f99194b5c1}"))]; // adapter name or IP address
 
-    // ReSharper disable once CppEntityAssignedButNoRead
-    DWORD rv;
     dllName[0] = '\0';
-    if ((rv = GetModuleFileName(NULL, dllName, countof(dllName)) == 0)) {
+    if (GetModuleFileName(NULL, dllName, countof(dllName)) == 0) {
         MessageBox_ShowError("ForceBindIP could not locate itself");
         return 1;
     }
@@ -119,8 +144,9 @@ wWinMain
 
     int idx = 0;
     while (TRUE) {
-        if (*ptr == '\0' || *ptr == ' ')
+        if (*ptr == '\0' || *ptr == ' ') {
             break;
+        }
         ipAddrToBind[idx++] = *ptr++;
     }
     ipAddrToBind[idx] = '\0';
@@ -153,8 +179,9 @@ wWinMain
 #if !defined(UNICODE)
                 lstrcpyn(ipAddrToBind, p_AdapterInfo->IpAddressList.IpAddress.String, sizeof(ipAddrToBind));
 #else
-                MultiByteToWideChar(CP_UTF8, 0, p_AdapterInfo->IpAddressList.IpAddress.String, -1, ipAddrToBind,
-                                    countof(ipAddrToBind));
+                MultiByteToWideChar(
+                    CP_UTF8, 0, p_AdapterInfo->IpAddressList.IpAddress.String, -1, ipAddrToBind, countof(ipAddrToBind)
+                );
 #endif
                 break;
             }
@@ -189,11 +216,7 @@ wWinMain
     }
 
     /* Do the alchemy. */
-    module_kernel32 = GetModuleHandleA("KERNEL32");
-
-    DecryptFunctionName((BYTE *)funcName_WriteProcessMemory);
-    func_WriteProcessMemory = (funcDecl_WriteProcessMemory)GetProcAddress(module_kernel32, funcName_WriteProcessMemory);
-    DecryptFunctionName((BYTE *)funcName_WriteProcessMemory);
+    module_kernel32 = GetModuleHandle(_T("KERNEL32"));
 
     remoteBuf = VirtualAllocEx(pInfo.hProcess, NULL, 4096 /* page size on x86 */, MEM_COMMIT, PAGE_READWRITE);
     if (remoteBuf == NULL) {
@@ -201,19 +224,18 @@ wWinMain
         return 1;
     }
 
-    SIZE_T bytesWritter;
-    if (func_WriteProcessMemory(pInfo.hProcess, remoteBuf, dllName, lstrlen(dllName), &bytesWritter) != TRUE) {
+    ResolveFunctionOnStack(module_kernel32, funcName_WriteProcessMemory, funcDecl_WriteProcessMemory, func_WriteProcessMemory);
+    SIZE_T bytesWritten;
+    if (func_WriteProcessMemory(pInfo.hProcess, remoteBuf, dllName, lstrlen(dllName), &bytesWritten) != TRUE) {
         MessageBox_Show("Unable to write remote memory");
         return 1;
     }
 
-    DecryptFunctionName((BYTE *)funcName_CreateRemoteThread);
-    func_CreateRemoteThread = (funcDecl_CreateRemoteThread)GetProcAddress(module_kernel32, funcName_CreateRemoteThread);
-    DecryptFunctionName((BYTE *)funcName_CreateRemoteThread);
-
+    ResolveFunctionOnStack(module_kernel32, funcName_CreateRemoteThread, funcDecl_CreateRemoteThread, func_CreateRemoteThread);
     func_LoadLibrary = (funcDecl_LoadLibrary)GetProcAddress(module_kernel32, funcName_LoadLibrary);
-    remoteThread = func_CreateRemoteThread(pInfo.hProcess, NULL, 0, (LPTHREAD_START_ROUTINE)func_LoadLibrary, remoteBuf,
-                                           creationFlags, NULL);
+    remoteThread = func_CreateRemoteThread(
+        pInfo.hProcess, NULL, 0, (LPTHREAD_START_ROUTINE)func_LoadLibrary, remoteBuf, CREATE_SUSPENDED, NULL
+    );
     if (remoteThread == INVALID_HANDLE_VALUE) {
         MessageBox_Show("Unable To Inject DLL");
         TerminateProcess(pInfo.hProcess, 1);
@@ -221,7 +243,11 @@ wWinMain
     }
 
     ResumeThread(remoteThread);
-    WaitForSingleObject(remoteThread, INFINITE);
+    if (WaitForSingleObject(remoteThread, INFINITE) != WAIT_OBJECT_0) {
+        MessageBox_Show("Unable To Run DLL");
+        TerminateProcess(pInfo.hProcess, 1);
+        return 1;
+    }
 
     if (!delayedInjection) {
         ResumeThread(pInfo.hThread);
@@ -232,14 +258,9 @@ wWinMain
     return 0;
 }
 
+/* Entrypoint is overriden for Release builds (no CRT at all) in project settings */
 #if defined(NDEBUG)
 int WINAPI EntryPoint(HINSTANCE hInstance, HINSTANCE hPrevInstance, TCHAR *lpCmdLine, int nShowCmd) {
-    return
-#if !defined(UNICODE)
-        WinMain
-#else
-        wWinMain
-#endif
-        (hInstance, hPrevInstance, lpCmdLine, nShowCmd);
+    return WinMain(hInstance, hPrevInstance, lpCmdLine, nShowCmd);
 }
 #endif

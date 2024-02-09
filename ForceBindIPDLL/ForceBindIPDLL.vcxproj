@@ -18,39 +18,42 @@
       <Platform>x64</Platform>
     </ProjectConfiguration>
   </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="BindIPDLL.c" />
+  </ItemGroup>
   <PropertyGroup Label="Globals">
     <VCProjectVersion>17.0</VCProjectVersion>
     <Keyword>Win32Proj</Keyword>
-    <ProjectGuid>{d2b051d3-ba8d-4cd3-bb64-88d4d9e85813}</ProjectGuid>
-    <RootNamespace>ForceBindIP</RootNamespace>
+    <ProjectGuid>{d2b051d3-ba8d-4cd3-bb64-88d4d9e85814}</ProjectGuid>
+    <RootNamespace>ForceBindIPDLL</RootNamespace>
     <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
-    <ConfigurationType>Application</ConfigurationType>
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
     <UseDebugLibraries>true</UseDebugLibraries>
-    <CharacterSet>MultiByte</CharacterSet>
     <PlatformToolset>v143</PlatformToolset>
+    <CharacterSet>MultiByte</CharacterSet>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">
-    <ConfigurationType>Application</ConfigurationType>
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
     <UseDebugLibraries>false</UseDebugLibraries>
+    <PlatformToolset>v143</PlatformToolset>
     <WholeProgramOptimization>true</WholeProgramOptimization>
     <CharacterSet>MultiByte</CharacterSet>
-    <PlatformToolset>v143</PlatformToolset>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
-    <ConfigurationType>Application</ConfigurationType>
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
     <UseDebugLibraries>true</UseDebugLibraries>
-    <CharacterSet>MultiByte</CharacterSet>
     <PlatformToolset>v143</PlatformToolset>
+    <CharacterSet>MultiByte</CharacterSet>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
-    <ConfigurationType>Application</ConfigurationType>
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
     <UseDebugLibraries>false</UseDebugLibraries>
+    <PlatformToolset>v143</PlatformToolset>
     <WholeProgramOptimization>true</WholeProgramOptimization>
     <CharacterSet>MultiByte</CharacterSet>
-    <PlatformToolset>v143</PlatformToolset>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
   <ImportGroup Label="ExtensionSettings">
@@ -75,23 +78,27 @@
     <LinkIncremental>false</LinkIncremental>
     <GenerateManifest>false</GenerateManifest>
     <OutDir>$(SolutionDir)build\$(Platform).$(Configuration)\exe_out\</OutDir>
-    <IntDir>$(SolutionDir)build\$(Platform).$(Configuration)\exe_int\</IntDir>
+    <IntDir>$(SolutionDir)build\$(Platform).$(Configuration)\dll_int\</IntDir>
     <RunCodeAnalysis>true</RunCodeAnalysis>
+    <TargetName>BindIP</TargetName>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <LinkIncremental>false</LinkIncremental>
     <GenerateManifest>false</GenerateManifest>
     <OutDir>$(SolutionDir)build\$(Platform).$(Configuration)\exe_out\</OutDir>
-    <IntDir>$(SolutionDir)build\$(Platform).$(Configuration)\exe_int\</IntDir>
+    <IntDir>$(SolutionDir)build\$(Platform).$(Configuration)\dll_int\</IntDir>
     <RunCodeAnalysis>true</RunCodeAnalysis>
+    <TargetName>BindIP</TargetName>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <OutDir>$(SolutionDir)build\$(Platform).$(Configuration)\exe_out\</OutDir>
-    <IntDir>$(SolutionDir)build\$(Platform).$(Configuration)\exe_int\</IntDir>
+    <IntDir>$(SolutionDir)build\$(Platform).$(Configuration)\dll_int\</IntDir>
+    <TargetName>BindIP</TargetName>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <OutDir>$(SolutionDir)build\$(Platform).$(Configuration)\exe_out\</OutDir>
-    <IntDir>$(SolutionDir)build\$(Platform).$(Configuration)\exe_int\</IntDir>
+    <IntDir>$(SolutionDir)build\$(Platform).$(Configuration)\dll_int\</IntDir>
+    <TargetName>BindIP</TargetName>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <ClCompile>
@@ -110,12 +117,13 @@
     <Link>
       <AdditionalLibraryDirectories>
       </AdditionalLibraryDirectories>
-      <AdditionalDependencies>iphlpapi.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <EntryPointSymbol>
       </EntryPointSymbol>
       <TreatLinkerWarningAsErrors>true</TreatLinkerWarningAsErrors>
       <Version>
       </Version>
+      <SubSystem>Windows</SubSystem>
+      <AdditionalDependencies>ws2_32.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
@@ -144,7 +152,7 @@
       <AdditionalLibraryDirectories>
       </AdditionalLibraryDirectories>
       <AdditionalDependencies>kernel32.lib;user32.lib;iphlpapi.lib</AdditionalDependencies>
-      <EntryPointSymbol>EntryPoint</EntryPointSymbol>
+      <EntryPointSymbol>DllMain</EntryPointSymbol>
       <IgnoreAllDefaultLibraries>true</IgnoreAllDefaultLibraries>
       <ImageHasSafeExceptionHandlers>false</ImageHasSafeExceptionHandlers>
       <AdditionalOptions>/nocoffgrpinfo %(AdditionalOptions)</AdditionalOptions>
@@ -176,12 +184,13 @@
     <Link>
       <AdditionalLibraryDirectories>
       </AdditionalLibraryDirectories>
-      <AdditionalDependencies>iphlpapi.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <EntryPointSymbol>
       </EntryPointSymbol>
       <TreatLinkerWarningAsErrors>true</TreatLinkerWarningAsErrors>
       <Version>
       </Version>
+      <SubSystem>Windows</SubSystem>
+      <AdditionalDependencies>ws2_32.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
@@ -210,7 +219,7 @@
       <AdditionalLibraryDirectories>
       </AdditionalLibraryDirectories>
       <AdditionalDependencies>kernel32.lib;user32.lib;iphlpapi.lib</AdditionalDependencies>
-      <EntryPointSymbol>EntryPoint</EntryPointSymbol>
+      <EntryPointSymbol>DllMain</EntryPointSymbol>
       <IgnoreAllDefaultLibraries>true</IgnoreAllDefaultLibraries>
       <ImageHasSafeExceptionHandlers>false</ImageHasSafeExceptionHandlers>
       <AdditionalOptions>/nocoffgrpinfo %(AdditionalOptions)</AdditionalOptions>
@@ -225,9 +234,6 @@
       <SetChecksum>true</SetChecksum>
     </Link>
   </ItemDefinitionGroup>
-  <ItemGroup>
-    <ClCompile Include="ForceBindIP.c" />
-  </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
     <Import Project="$(VCTargetsPath)\BuildCustomizations\masm.targets" />
