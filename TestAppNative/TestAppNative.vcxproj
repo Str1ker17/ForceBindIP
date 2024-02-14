@@ -5,15 +5,15 @@
   </PropertyGroup>
   <Import Project="$(SolutionDir)\ForceBindIP.props" />
   <PropertyGroup Label="Globals">
-    <ProjectGuid>{D2B051D3-BA8D-4CD3-BB64-88D4D9E85813}</ProjectGuid>
-    <RootNamespace>ForceBindIP</RootNamespace>
+    <ProjectGuid>{A8ACE348-CA4C-4549-8405-3FEBFFB262E1}</ProjectGuid>
+    <RootNamespace>TestAppNative</RootNamespace>
   </PropertyGroup>
   <PropertyGroup Label="UserMacros">
-    <AdditionalLinkDependencies>iphlpapi.lib</AdditionalLinkDependencies>
+    <AdditionalLinkDependencies>ws2_32.lib</AdditionalLinkDependencies>
   </PropertyGroup>
   <ItemDefinitionGroup>
     <Link>
-      <SubSystem>Windows</SubSystem>
+      <SubSystem>Console</SubSystem>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)'=='Release'">
@@ -22,6 +22,6 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="ForceBindIP.c" />
+    <ClCompile Include="TestAppNative.c" />
   </ItemGroup>
 </Project>
