@@ -4,6 +4,8 @@
     <ConfigurationType>Application</ConfigurationType>
   </PropertyGroup>
   <Import Project="$(SolutionDir)\ForceBindIP.props" />
+  <PropertyGroup Label="Configuration">
+  </PropertyGroup>
   <PropertyGroup Label="Globals">
     <ProjectGuid>{A8ACE348-CA4C-4549-8405-3FEBFFB262E1}</ProjectGuid>
     <RootNamespace>TestAppNative</RootNamespace>

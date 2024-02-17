@@ -4,6 +4,8 @@
     <ConfigurationType>Application</ConfigurationType>
   </PropertyGroup>
   <Import Project="$(SolutionDir)\ForceBindIP.props" />
+  <PropertyGroup Label="Configuration">
+  </PropertyGroup>
   <PropertyGroup Label="Globals">
     <ProjectGuid>{D2B051D3-BA8D-4CD3-BB64-88D4D9E85813}</ProjectGuid>
     <RootNamespace>ForceBindIP</RootNamespace>

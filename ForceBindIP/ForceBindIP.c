@@ -4,17 +4,6 @@
 #include <iphlpapi.h>
 #include <tchar.h>
 
-#if defined(NOT_DECLARED_IN_PROJECT)
-/* Unreferenced formal parameter */
-#pragma warning(disable: 4100)
-/* Unsafe conversion between function types */
-#pragma warning(disable: 4191)
-/* Function selected for automatic inline expansion */
-/*#pragma warning(disable: 4711)*/
-/* Compiler will insert Spectre mitigation */
-#pragma warning(disable: 5045)
-#endif
-
 #define countof(a) (sizeof(a) / sizeof((a)[0]))
 
 #define STRINGIZE(s) STRINGIZE2(s)
@@ -23,7 +12,7 @@
 #define MessageBox_Show(text) MessageBox(NULL, _T(text), _T("ForceBindIP"), MB_ICONEXCLAMATION)
 #define MessageBox_Show2(caption, text) MessageBox(NULL, _T(text), _T(caption), MB_ICONEXCLAMATION)
 
-static void MessageBox_ShowError(LPTSTR text) {
+static void MessageBox_ShowError(TCHAR *text) {
     TCHAR buf[256];
     DWORD rv = GetLastError();
     int printed = wsprintf(buf, _T("%s\r\n\r\nWindows Error %u - "), text, rv);
@@ -96,6 +85,31 @@ static void DecryptFunctionName(BYTE *data, BYTE *out) {
         RtlZeroMemory(funcNameDecrypted, sizeof(funcNameDecrypted));                                                           \
     } while (0)
 
+TCHAR *LTrimCommandLine(TCHAR *cmdLine) {
+    TCHAR *ptr = cmdLine;
+
+    if (*ptr != '"') {
+        while (*ptr > ' ') {
+            ++ptr;
+        }
+    } else {
+        ++ptr;
+        while (*ptr != '\0' && *ptr != '"') {
+            ++ptr;
+        }
+
+        if (*ptr == '"') {
+            ++ptr;
+        }
+    }
+
+    while (*ptr != '\0' && *ptr <= ' ') {
+        ++ptr;
+    }
+
+    return ptr;
+}
+
 static int usage(void) { return MessageBox_Show2("Usage", "ForceBindIP usage"); }
 
 int WINAPI _tWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, TCHAR *lpCmdLine, int nShowCmd) {
@@ -103,8 +117,8 @@ int WINAPI _tWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, TCHAR *lpCmdL
     funcDecl_WriteProcessMemory func_WriteProcessMemory;
     funcDecl_CreateRemoteThread func_CreateRemoteThread;
     funcDecl_LoadLibrary func_LoadLibrary;
-    PROCESS_INFORMATION pInfo;
-    STARTUPINFO StartupInfo;
+    STARTUPINFO StartupInfo = {0};
+    PROCESS_INFORMATION pInfo = {0};
     LPVOID remoteBuf;
     HANDLE remoteThread;
     DWORD creationFlags = 0;
@@ -195,12 +209,10 @@ int WINAPI _tWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, TCHAR *lpCmdL
     /* Pass to DLL. */
     SetEnvironmentVariable(_T("FORCEDIP"), ipAddrToBind);
 
-    memset(&StartupInfo, 0, sizeof(StartupInfo));
     StartupInfo.cb = sizeof(StartupInfo);
     if (!delayedInjection) {
         creationFlags = CREATE_SUSPENDED;
     }
-    memset(&pInfo, 0, sizeof(pInfo));
     if (!CreateProcess(NULL, ptr, NULL, NULL, TRUE, creationFlags, NULL, NULL, &StartupInfo, &pInfo)) {
         MessageBox_ShowError("ForceBindIP was unable to start the target program");
         return 1;
@@ -214,16 +226,22 @@ int WINAPI _tWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, TCHAR *lpCmdL
 
     remoteBuf = VirtualAllocEx(pInfo.hProcess, NULL, 4096 /* page size on x86 */, MEM_COMMIT, PAGE_READWRITE);
     if (remoteBuf == NULL) {
-        MessageBox_Show("Unable to allocate remote memory");
+        MessageBox_ShowError("Unable to allocate remote memory");
         return 1;
     }
 
     ResolveFunctionOnStack(module_kernel32, funcName_WriteProcessMemory, funcDecl_WriteProcessMemory, func_WriteProcessMemory);
     SIZE_T bytesWritten;
-    if (func_WriteProcessMemory(pInfo.hProcess, remoteBuf, dllName, lstrlen(dllName), &bytesWritten) != TRUE) {
-        MessageBox_Show("Unable to write remote memory");
+    if (func_WriteProcessMemory(pInfo.hProcess, remoteBuf, dllName, (lstrlen(dllName) + 1) * sizeof(TCHAR), &bytesWritten) !=
+        TRUE) {
+        MessageBox_ShowError("Unable to write remote memory");
         return 1;
     }
+
+#if defined(DEBUG)
+    VOID *mem = LocalAlloc(0, 4096);
+    ReadProcessMemory(pInfo.hProcess, remoteBuf, mem, 4096, NULL);
+#endif
 
     ResolveFunctionOnStack(module_kernel32, funcName_CreateRemoteThread, funcDecl_CreateRemoteThread, func_CreateRemoteThread);
     func_LoadLibrary = (funcDecl_LoadLibrary)GetProcAddress(module_kernel32, funcName_LoadLibrary);
@@ -231,17 +249,27 @@ int WINAPI _tWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, TCHAR *lpCmdL
         pInfo.hProcess, NULL, 0, (LPTHREAD_START_ROUTINE)func_LoadLibrary, remoteBuf, CREATE_SUSPENDED, NULL
     );
     if (remoteThread == INVALID_HANDLE_VALUE) {
-        MessageBox_Show("Unable To Inject DLL");
+        MessageBox_ShowError("Unable to inject DLL");
         TerminateProcess(pInfo.hProcess, 1);
         return 1;
     }
 
     ResumeThread(remoteThread);
     if (WaitForSingleObject(remoteThread, INFINITE) != WAIT_OBJECT_0) {
-        MessageBox_Show("Unable To Run DLL");
+        MessageBox_ShowError("Unable to run DLL");
         TerminateProcess(pInfo.hProcess, 1);
         return 1;
     }
+
+    /* TODO: check if LoadLibrary succeeded! */
+#if 0
+    DWORD exitCode = 0xffffffffu;
+    if (GetExitCodeThread(remoteThread, &exitCode) == 0 || exitCode == 0) {
+        MessageBox_ShowError("Failed to run DllMain");
+        TerminateProcess(pInfo.hProcess, 1);
+        return 1;
+    }
+#endif
 
     if (!delayedInjection) {
         ResumeThread(pInfo.hThread);
@@ -254,7 +282,11 @@ int WINAPI _tWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, TCHAR *lpCmdL
 
 /* Entrypoint is overriden for Release builds (no CRT at all) in project settings */
 #if defined(NDEBUG)
-int WINAPI EntryPoint(HINSTANCE hInstance, HINSTANCE hPrevInstance, TCHAR *lpCmdLine, int nShowCmd) {
-    return _tWinMain(hInstance, hPrevInstance, lpCmdLine, nShowCmd);
+void DECLSPEC_NORETURN WINAPI EntryPoint(void) {
+    /* Ignore parent nShowCmd for simplicity.
+     * See https://in4k.untergrund.net/various%20web%20articles/Creating_Small_Win32_Executables_-_Fast_Builds.htm for more
+     * details.
+     */
+    ExitProcess(_tWinMain(GetModuleHandle(NULL), NULL, LTrimCommandLine(GetCommandLine()), SW_SHOWDEFAULT));
 }
 #endif

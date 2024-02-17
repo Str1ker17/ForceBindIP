@@ -6,17 +6,6 @@
 #include <tchar.h>
 #include <winsock2.h>
 
-#if defined(NOT_DECLARED_IN_PROJECT)
-/* Unreferenced formal parameter */
-#pragma warning(disable: 4100)
-/* Unsafe conversion between function types */
-#pragma warning(disable: 4191)
-/* Function selected for automatic inline expansion */
-/*#pragma warning(disable: 4711)*/
-/* Compiler will insert Spectre mitigation */
-#pragma warning(disable: 5045)
-#endif
-
 #define countof(a) (sizeof(a) / sizeof((a)[0]))
 
 #define IPADDR_MAX 64
@@ -41,7 +30,7 @@ static int SetupHooks(void) {
 int WINAPI DllMain(HANDLE hModule, DWORD reason, LPVOID reserved) {
     switch (reason) {
         case DLL_PROCESS_ATTACH: {
-            MessageBox(NULL, _T("Hey"), _T("Yes"), MB_OK);
+            MessageBox(NULL, _T("DllMain, DLL_PROCESS_ATTACH"), _T("BindIPDLL"), MB_OK);
             return SetupHooks();
         }
         case DLL_THREAD_ATTACH:  /* NOLINT(bugprone-branch-clone) */
@@ -50,7 +39,8 @@ int WINAPI DllMain(HANDLE hModule, DWORD reason, LPVOID reserved) {
             return 1;
         }
         default: {
-            return 1;
+            MessageBox(NULL, _T("DllMain, unknown op"), _T("BindIPDLL"), MB_OK);
+            return 0; /* F A I L */
         }
     }
 }
