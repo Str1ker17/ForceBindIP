@@ -57,12 +57,18 @@
   </PropertyGroup>
   <ItemDefinitionGroup>
     <ClCompile>
+      <AdditionalIncludeDirectories>$(SolutionDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <WarningLevel>EnableAllWarnings</WarningLevel>
       <ExceptionHandling>false</ExceptionHandling>
       <TreatWarningAsError>true</TreatWarningAsError>
       <DisableLanguageExtensions />
       <CompileAs>CompileAsC</CompileAs>
-      <DisableSpecificWarnings>4100;4191;5045</DisableSpecificWarnings>
+<!-- #pragma warning(disable: 4100) /* Unreferenced formal parameter */ -->
+<!-- #pragma warning(disable: 4191) /* Unsafe conversion between function types */ -->
+<!-- #pragma warning(disable: 4820) /* The type and order of elements caused the compiler to add padding to the end of a struct */ -->
+<!-- #pragma warning(disable: 5045) /* Compiler will insert Spectre mitigation */ -->
+<!-- #pragma warning(disable: 28251) /* Inconsistent annotation for function */ -->
+      <DisableSpecificWarnings>4100;4191;4820;5045;28251</DisableSpecificWarnings>
       <LanguageStandard_C>stdc11</LanguageStandard_C>
       <ExternalWarningLevel>TurnOffAllWarnings</ExternalWarningLevel>
       <TreatAngleIncludeAsExternal>true</TreatAngleIncludeAsExternal>
@@ -108,13 +114,14 @@
       <InlineFunctionExpansion>OnlyExplicitInline</InlineFunctionExpansion>
     </ClCompile>
     <Link>
+      <IgnoreAllDefaultLibraries>true</IgnoreAllDefaultLibraries>
       <AdditionalDependencies>kernel32.lib;user32.lib;$(AdditionalLinkDependencies)</AdditionalDependencies>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <IgnoreAllDefaultLibraries>true</IgnoreAllDefaultLibraries>
-      <ImageHasSafeExceptionHandlers>false</ImageHasSafeExceptionHandlers>
-      <AdditionalOptions>/nocoffgrpinfo %(AdditionalOptions)</AdditionalOptions>
-      <MergeSections>.rdata=.text</MergeSections>
       <SetChecksum>true</SetChecksum>
+      <ImageHasSafeExceptionHandlers>false</ImageHasSafeExceptionHandlers>
+      <MergeSections>.rdata=.text</MergeSections>
+      <RandomizedBaseAddress>false</RandomizedBaseAddress>
+      <AdditionalOptions>/nocoffgrpinfo %(AdditionalOptions)</AdditionalOptions>
     </Link>
   </ItemDefinitionGroup>
 

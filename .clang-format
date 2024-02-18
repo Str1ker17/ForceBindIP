@@ -18,7 +18,7 @@ Language: Cpp
 LineEnding: CRLF
 MaxEmptyLinesToKeep: 1
 PointerAlignment: Right
-PPIndentWidth: 4
+PPIndentWidth: 0
 QualifierAlignment: Left
 RemoveParentheses: ReturnStatement
 RemoveSemicolon: true

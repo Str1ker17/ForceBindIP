@@ -4,27 +4,17 @@
 #include <winsock2.h>
 #include <tchar.h>
 
-#if defined(__RESHARPER__)
-    #if !defined(UNICODE)
-[[rscpp::format(printf, 1, 2)]]
-    #else
-[[rscpp::format(wprintf, 1, 2)]]
-    #endif
+#include "picocrt.h"
+
+#define htobe16(x) ((((x) & 0xff) << 8) | ((x) >> 8))
+#define be16toh(x) htobe16(x)
+
+static void WSAErrorHandler(
+    const int rv, const TCHAR *file, const int line
+#if defined(VERBOSE)
+    , const TCHAR *op
 #endif
-int lprintf(TCHAR *fmt, ...) {
-    TCHAR buf[256];
-    va_list v1;
-    va_start(v1, fmt);
-    int len = wvsprintf(buf, fmt, v1);
-    DWORD charsWritten;
-    WriteConsole(GetStdHandle(STD_OUTPUT_HANDLE), buf, len, &charsWritten, NULL);
-    va_end(v1);
-    return len;
-}
-
-#define lprintf(fmt, ...) lprintf(_T(fmt), ##__VA_ARGS__)
-
-static __declspec(noreturn) void WSAErrorHandler(const int rv, const TCHAR *file, const int line, const TCHAR *op) {
+) {
     int rc = WSAGetLastError();
     TCHAR *s;
     FormatMessage(
@@ -36,25 +26,23 @@ static __declspec(noreturn) void WSAErrorHandler(const int rv, const TCHAR *file
         0,
         NULL
     );
-    lprintf("%s:%d: WSA error %d - %s (rv = %d) when doing\r\n    %s\r\n", file, line, rc, s, rv, op);
+    lprintf("%s:%d: rv = %d, WSA error %d - %s\r\n", file, line, rv, rc, s);
+#if defined(VERBOSE)
+    lprintf("    %s\r\n", op);
+#endif
     LocalFree(s);
-    ExitProcess(1);
 }
 
-#define wsacall(op)                                                                                                            \
-    do {                                                                                                                       \
-        int rv = (op);                                                                                                         \
-        if (rv < 0) {                                                                                                          \
-            WSAErrorHandler(rv, L""__FILE__, __LINE__, L"" #op);                                                               \
-        }                                                                                                                      \
-    } while (0)
+/* clang-format off */
+#if !defined(VERBOSE)
+#define wsacall(op) do { int rv = (op); if (rv < 0) { WSAErrorHandler(rv, _T(__FILE__), __LINE__); return; } } while (0)
+#else
+#define wsacall(op) do { int rv = (op); if (rv < 0) { WSAErrorHandler(rv, _T(__FILE__), __LINE__, #op); return; } } while (0)
+#endif
+/* clang-format on */
 
-int __cdecl _tmain(void) {
+static void TestCase1(void) {
     SOCKET s;
-    WSADATA wsaData;
-
-    wsacall(WSAStartup(MAKEWORD(2, 2), &wsaData));
-
     wsacall(s = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP));
     int broadcastEnable = 1;
     wsacall(setsockopt(s, SOL_SOCKET, SO_BROADCAST, (const char *)&broadcastEnable, sizeof(broadcastEnable)));
@@ -62,7 +50,7 @@ int __cdecl _tmain(void) {
     SOCKADDR_IN sin = {0};
     sin.sin_family = AF_INET;
     sin.sin_addr.S_un.S_addr = 0xffffffffU;
-    sin.sin_port = htons(62900);
+    sin.sin_port = htobe16(62900);
     wsacall(sendto(s, (const char *)&s, sizeof(s), 0, (const SOCKADDR *)&sin, sizeof(sin)));
 
     int namelen = sizeof(sin);
@@ -74,17 +62,28 @@ int __cdecl _tmain(void) {
         sin.sin_addr.S_un.S_un_b.s_b2,
         sin.sin_addr.S_un.S_un_b.s_b3,
         sin.sin_addr.S_un.S_un_b.s_b4,
-        ntohs(sin.sin_port)
+        be16toh(sin.sin_port)
     );
+}
+
+int __cdecl _tmain(void) {
+    WSADATA wsaData;
+
+    wsacall(WSAStartup(MAKEWORD(2, 2), &wsaData));
+
+    {
+        TestCase1();
+    }
 
     wsacall(WSACleanup());
 
     lprintf("Press any key to continue ... ");
-    FlushConsoleInputBuffer(GetStdHandle(STD_INPUT_HANDLE));
+    HANDLE hStdin = GetStdHandle(STD_INPUT_HANDLE);
+    FlushConsoleInputBuffer(hStdin);
     while (TRUE) {
         INPUT_RECORD ir;
         DWORD read;
-        if (ReadConsoleInput(GetStdHandle(STD_INPUT_HANDLE), &ir, 1, &read)) {
+        if (ReadConsoleInput(hStdin, &ir, 1, &read)) {
             if (ir.EventType == KEY_EVENT && ir.Event.KeyEvent.bKeyDown) {
                 break;
             }
@@ -96,5 +95,5 @@ int __cdecl _tmain(void) {
 
 /* Entrypoint is overriden for Release builds (no CRT at all) in project settings */
 #if defined(NDEBUG)
-int WINAPI EntryPoint(void) { return _tmain(); }
+void DECLSPEC_NORETURN WINAPI EntryPoint(void) { ExitProcess(_tmain()); }
 #endif

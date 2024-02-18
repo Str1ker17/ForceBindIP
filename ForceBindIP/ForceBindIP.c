@@ -4,33 +4,8 @@
 #include <iphlpapi.h>
 #include <tchar.h>
 
-#define countof(a) (sizeof(a) / sizeof((a)[0]))
-
-#define STRINGIZE(s) STRINGIZE2(s)
-#define STRINGIZE2(s) #s
-
-#define MessageBox_Show(text) MessageBox(NULL, _T(text), _T("ForceBindIP"), MB_ICONEXCLAMATION)
-#define MessageBox_Show2(caption, text) MessageBox(NULL, _T(text), _T(caption), MB_ICONEXCLAMATION)
-
-static void MessageBox_ShowError(TCHAR *text) {
-    TCHAR buf[256];
-    DWORD rv = GetLastError();
-    int printed = wsprintf(buf, _T("%s\r\n\r\nWindows Error %u - "), text, rv);
-    TCHAR *ptr = buf + printed;
-    FormatMessage(
-        FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
-        NULL,
-        rv,
-        MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
-        ptr,
-        countof(buf) - printed,
-        NULL
-    );
-    MessageBox(NULL, buf, _T("ForceBindIP"), MB_ICONERROR);
-}
-
-/* Hide some complexity. */
-#define MessageBox_ShowError(textA) MessageBox_ShowError(_T(textA))
+#define WHOAMI "ForceBindIP"
+#include "picocrt.h"
 
 typedef _Success_(return != FALSE) BOOL(WINAPI *funcDecl_WriteProcessMemory)(
     _In_ HANDLE hProcess, _In_ LPVOID lpBaseAddress, _In_reads_bytes_(nSize) LPCVOID lpBuffer, _In_ SIZE_T nSize,
@@ -48,18 +23,6 @@ typedef _Ret_maybenull_ HMODULE(WINAPI *funcDecl_LoadLibrary)(_In_ LPCSTR lpLibF
 static const CHAR funcName_CreateRemoteThread[] = "Zk|xm|K|tvm|Mqk|x}";
 static const CHAR funcName_WriteProcessMemory[] = "Nkpm|Ikvz|jjT|tvk`";
 static const CHAR funcName_LoadLibrary[] = STRINGIZE(LoadLibrary);
-
-#if defined(NDEBUG)
-    #pragma function(memset)
-
-void *__cdecl memset(void *ptr, int c, size_t len) {
-    BYTE *p = ptr;
-    for (SIZE_T i = 0; i < len; ++i) {
-        *p++ = (BYTE)c;
-    }
-    return ptr;
-}
-#endif
 
 PTCHAR lstrrchr(PTCHAR str, TCHAR c) {
     for (PTCHAR p = str + lstrlen(str); p >= str; --p) {
@@ -261,15 +224,13 @@ int WINAPI _tWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, TCHAR *lpCmdL
         return 1;
     }
 
-    /* TODO: check if LoadLibrary succeeded! */
-#if 0
-    DWORD exitCode = 0xffffffffu;
-    if (GetExitCodeThread(remoteThread, &exitCode) == 0 || exitCode == 0) {
+    /* DONE: check if LoadLibrary succeeded! */
+    DWORD exitCode;
+    if (GetExitCodeThread(remoteThread, &exitCode) == FALSE || exitCode == 0) {
         MessageBox_ShowError("Failed to run DllMain");
         TerminateProcess(pInfo.hProcess, 1);
         return 1;
     }
-#endif
 
     if (!delayedInjection) {
         ResumeThread(pInfo.hThread);
