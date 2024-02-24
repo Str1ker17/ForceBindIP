@@ -1,6 +1,7 @@
-/* ReSharper disable CppClangTidyBugproneReservedIdentifier */
-/* ReSharper disable CppClangTidyClangDiagnosticReservedMacroIdentifier */
-// ReSharper disable once CppInconsistentNaming
+/* ReSharper disable CppClangTidyClangDiagnosticCastFunctionTypeStrict */
+/* ReSharper disable once CppClangTidyBugproneReservedIdentifier */
+/* ReSharper disable once CppClangTidyClangDiagnosticReservedMacroIdentifier */
+/* ReSharper disable once CppInconsistentNaming */
 #define _WINSOCK_DEPRECATED_NO_WARNINGS
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
@@ -10,31 +11,82 @@
 #define WHOAMI "BindIP DLL"
 #include "picocrt.h"
 
+#define WSA_WANTED
+#include "ForceBindIPHelpers.h"
+
+#define WINAPI_PROLOGUE_SIZE 5
+
+typedef struct BindIP_HookData_S {
+    const TCHAR *const moduleName;
+    const CHAR *const funcName;
+    LPVOID funcPtr;
+    UINT_PTR hookPtr;
+    BYTE origData[WINAPI_PROLOGUE_SIZE];
+    BYTE hookedData[WINAPI_PROLOGUE_SIZE];
+    PROC trampoline;
+} BindIP_HookData;
+
 #define DECLARE_HOOK(module, func, hook)                                                                                       \
     { .moduleName = _T(module), .funcName = (func), .hookPtr = (UINT_PTR)(hook) }
 
-typedef struct BindIP_HookData_S {
-    TCHAR *moduleName;
-    CHAR *funcName;
-    LPVOID funcPtr;
-    UINT_PTR hookPtr;
-    BYTE origData[5];
-    BYTE hookedData[5];
-} BindIP_HookData;
+typedef int(WSAAPI *funcDecl_sendto)(
+    _In_ SOCKET s, _In_reads_bytes_(len) const char FAR *buf, _In_ int len, _In_ int flags,
+    _In_reads_bytes_(tolen) const struct sockaddr FAR *to, _In_ int tolen
+);
+int WINAPI funcHook_sendto(SOCKET s, const char *buf, int len, int flags, const SOCKADDR *to, int tolen);
 
-int funcHook_sendto(SOCKET s, const SOCKADDR *name, int namelen) {
-    SetLastError(WSAENETDOWN);
-    return -1;
-}
+typedef enum {
+    Hook_sendto,
+} BindIP_HookList;
 
 BindIP_HookData hookData[] = {
-    DECLARE_HOOK("WS2_32", "sendto", funcHook_sendto),
+    [Hook_sendto] = DECLARE_HOOK("WS2_32", "sendto", funcHook_sendto),
 };
 
-#define IPADDR_MAX 64
-static DWORD ipAddr_GlobalVar;
+static DWORD ipAddr_GlobalVar = 0;
+HANDLE hMutex = INVALID_HANDLE_VALUE;
 
+int WINAPI funcHook_sendto(SOCKET s, const char *buf, int len, int flags, const SOCKADDR *to, int tolen) {
+    SOCKADDR_IN sockname = {0};
+    int salen = sizeof(sockname);
+    int rv = 0;
+    if (getsockname(s, (SOCKADDR *)&sockname, &salen) == SOCKET_ERROR) {
+        rv = WSAGetLastError();
+    }
+    switch (rv) {
+        case 0:
+        case WSAEINVAL: /* Can occur on the first sendto() without prior bind() */ {
+            switch (to->sa_family) {
+                case AF_INET: {
+                    if (rv == WSAEINVAL || ((CONST SOCKADDR_IN *)&sockname)->sin_addr.S_un.S_addr == INADDR_ANY) {
+                        const SOCKADDR_IN sb = {.sin_family = AF_INET, .sin_addr.S_un.S_addr = ipAddr_GlobalVar, .sin_port = 0};
+                        wsacall(bind(s, (CONST SOCKADDR *)&sb, sizeof(sb)));
+                    }
+                    break;
+                }
+                case AF_INET6: {
+                    /* TODO */
+                    DebugBreak();
+                    break;
+                }
+                default: {
+                }
+            }
+            break;
+        }
+        default: {
+        }
+    }
+
+    return ((funcDecl_sendto)hookData[Hook_sendto].trampoline)(s, buf, len, flags, to, tolen);
+}
+
+/* DONE: implement trampolines
+ * https://medium.com/geekculture/basic-windows-api-hooking-acb8d275e9b8
+ * https://stackoverflow.com/a/45061320/1543625
+ */
 static int SetupHooks(void) {
+#define IPADDR_MAX 64
     TCHAR ipAddrFromEnvVar[IPADDR_MAX];
     CHAR ipAddrString[IPADDR_MAX];
 
@@ -53,22 +105,38 @@ static int SetupHooks(void) {
 
     for (unsigned i = 0; i < countof(hookData); ++i) {
         BindIP_HookData *d = &hookData[i];
-        HANDLE hModule = GetModuleHandle(d->moduleName);
+        const HANDLE hModule = GetModuleHandle(d->moduleName);
         if (hModule == NULL) {
             return FALSE;
         }
-        LPVOID funcPtr = (LPVOID)GetProcAddress(hModule, d->funcName);
-        if (ReadProcessMemory(GetCurrentProcess(), funcPtr, d->origData, sizeof(d->origData), NULL) != TRUE) {
+        const HANDLE hProcess = GetCurrentProcess();
+        const LPVOID funcPtr = (LPVOID)GetProcAddress(hModule, d->funcName);
+        if (ReadProcessMemory(hProcess, funcPtr, d->origData, sizeof(d->origData), NULL) != TRUE) {
             return FALSE;
         }
 
         d->funcPtr = funcPtr;
-        UINT_PTR trampolineStart = (UINT_PTR)funcPtr + 5;
-        UINT_PTR relativeOffset = d->hookPtr - trampolineStart;
+        UINT_PTR trampolineEnd = (UINT_PTR)funcPtr + WINAPI_PROLOGUE_SIZE;
 
+        CONST SIZE_T trampolineSize = 11;
+        BYTE *trampolineStart = VirtualAlloc(NULL, trampolineSize, MEM_COMMIT, PAGE_READWRITE);
+        if (trampolineStart == NULL) {
+            return FALSE;
+        }
+        memcpy(trampolineStart, d->origData, sizeof(d->origData));
+        trampolineStart[WINAPI_PROLOGUE_SIZE] = 0x68; /* push funcPtr + WINAPI_PROLOGUE_SIZE */
+        memcpy(&trampolineStart[6], &trampolineEnd, sizeof(trampolineEnd));
+        trampolineStart[10] = 0xC3; /* ret */
+        DWORD oldProtect;
+        if (VirtualProtect(trampolineStart, trampolineSize, PAGE_EXECUTE_READ, &oldProtect) != TRUE) {
+            return FALSE;
+        }
+        d->trampoline = (PROC)trampolineStart;
+
+        UINT_PTR relativeOffset = d->hookPtr - trampolineEnd;
         d->hookedData[0] = 0xE9; /* jmp */
         memcpy(&d->hookedData[1], &relativeOffset, sizeof(relativeOffset));
-        if (WriteProcessMemory(GetCurrentProcess(), funcPtr, d->hookedData, sizeof(d->hookedData), NULL) != TRUE) {
+        if (WriteProcessMemory(hProcess, funcPtr, d->hookedData, sizeof(d->hookedData), NULL) != TRUE) {
             return FALSE;
         }
     }

@@ -7,6 +7,9 @@
 #define WHOAMI "ForceBindIP"
 #include "picocrt.h"
 
+#define WINIFACE_WANTED
+#include "ForceBindIPHelpers.h"
+
 typedef _Success_(return != FALSE) BOOL(WINAPI *funcDecl_WriteProcessMemory)(
     _In_ HANDLE hProcess, _In_ LPVOID lpBaseAddress, _In_reads_bytes_(nSize) LPCVOID lpBuffer, _In_ SIZE_T nSize,
     _Out_opt_ SIZE_T *lpNumberOfBytesWritten
@@ -248,6 +251,6 @@ void DECLSPEC_NORETURN WINAPI EntryPoint(void) {
      * See https://in4k.untergrund.net/various%20web%20articles/Creating_Small_Win32_Executables_-_Fast_Builds.htm for more
      * details.
      */
-    ExitProcess(_tWinMain(GetModuleHandle(NULL), NULL, LTrimCommandLine(GetCommandLine()), SW_SHOWDEFAULT));
+    ExitProcess(_tWinMain(/*GetModuleHandle(NULL)*/ NULL, NULL, LTrimCommandLine(GetCommandLine()), SW_SHOWDEFAULT));
 }
 #endif

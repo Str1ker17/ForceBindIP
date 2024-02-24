@@ -27,9 +27,6 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="BindIPDLL.c">
-      <Optimization Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">Disabled</Optimization>
-      <Optimization Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Disabled</Optimization>
-    </ClCompile>
+    <ClCompile Include="BindIPDLL.c" />
   </ItemGroup>
 </Project>
